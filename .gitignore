@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.flet/
+.pytest_cache/
+build/
+dist/
+*.db
+*.db-wal
+*.db-shm
+*.jks
+.env
+*.zip

@@ -1,0 +1,5 @@
+flet==0.86.2
+flet-charts==0.86.2
+pandas==3.0.3
+flet-desktop==0.86.2; sys_platform == "win32"
+flet-web==0.86.2
