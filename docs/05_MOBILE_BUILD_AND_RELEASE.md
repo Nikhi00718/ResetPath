@@ -39,6 +39,11 @@ The included background launcher uses the same build and records a log:
 .\.venv\Scripts\python.exe tools\launch_android_build.py
 ```
 
+The build worker uses Flet's `--split-per-abi` option. For most physical
+Android phones, distribute `resetpath-arm64-v8a.apk`; it is substantially
+smaller than a universal APK. Keep the universal build as a compatibility
+fallback when one is available.
+
 On Windows, Flutter may ask for Developer Mode because its generated desktop
 shell uses plugin symlinks. The included worker has an Android-only fallback
 that temporarily parks the generated Windows shell instead of changing the

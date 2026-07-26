@@ -15,6 +15,7 @@
 - optional mood and energy check-ins;
 - SQLite schema v2 migration and expanded private export;
 - privacy notes, device-feature documentation, tests, and Android packaging.
+- split-per-ABI packaging and a smaller ARM64 phone download.
 
 ### Safety boundaries
 
