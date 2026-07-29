@@ -9,7 +9,7 @@ choose one manageable action, and keep evidence of work you completed.
 
 ## Download for Android
 
-[**Download ResetPath for Android phones (ARM64)**](https://github.com/Nikhi00718/ResetPath/releases/latest/download/ResetPath-v0.2.0-arm64.apk)
+[**Download ResetPath for Android phones (ARM64)**](https://github.com/Nikhi00718/ResetPath/releases/latest/download/resetpath-arm64-v8a.apk)
 
 The APK is a personal testing build signed with a debug certificate. Android
 may ask you to allow installation from your browser or file manager. The
@@ -21,7 +21,7 @@ from the [release page](https://github.com/Nikhi00718/ResetPath/releases/latest)
 
 After downloading:
 
-1. Open `ResetPath-v0.2.0-arm64.apk`.
+1. Open `resetpath-arm64-v8a.apk`.
 2. Allow installation from this source if Android asks.
 3. Install and open ResetPath.
 4. Read the short safety notice and add support contacts if you want.
