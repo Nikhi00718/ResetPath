@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 — Local context and privacy release
+
+### Added
+
+- free-form private diary pages with edit, export, and delete-all coverage;
+- optional local diary retrieval for a single guided reflection;
+- compact offline emotion router trained only on the public `dair-ai/emotion`
+  dataset, with a user-controlled emotion choice and confidence abstention;
+- stored light/dark appearance preference and route-aware back navigation;
+- held-out model evaluation report and safety-focused test coverage.
+
+### Safety boundaries
+
+- diary pages are not used for model training;
+- the router is not a mental-health or safety assessment model;
+- diary retrieval is opt-in, local, temporary, and limited to three excerpts;
+- Samsung Health direct sync remains out of scope for this version.
+
 ## 0.1.0 — First private Android release
 
 ### Added

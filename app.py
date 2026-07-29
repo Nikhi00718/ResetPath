@@ -10,6 +10,7 @@ Build Android:
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from enum import StrEnum
 import inspect
@@ -20,6 +21,7 @@ import flet_charts as fch
 import pandas as pd
 
 from database import Database
+from local_ai import classify_emotion, retrieve_diary_context
 from logic import (
     SupportSettings,
     Task,
@@ -75,12 +77,16 @@ NAV_VIEWS = [
     ViewName.HELP,
 ]
 
+ROUTES_TO_VIEWS = {"/": ViewName.HOME, **{f"/{view.value}": view for view in ViewName if view != ViewName.HOME}}
+VIEWS_TO_ROUTES = {view: route for route, view in ROUTES_TO_VIEWS.items()}
+
 
 class ResetPathApp:
     def __init__(self, page: ft.Page) -> None:
         self.page = page
         self.database = Database()
         self.current_view = ViewName.HOME
+        self.navigation_history: list[ViewName] = []
         self.task_filter = "today"
         self.progress_filter = "7"
         self.crisis_redirected = False
@@ -92,8 +98,13 @@ class ResetPathApp:
             "thought": "",
             "emotion": "",
             "action": "",
+            "use_diary_context": False,
+            "diary_context": (),
+            "model_route": "",
         }
         self.journal_plan = None
+        self.diary_editing_id: int | None = None
+        self.diary_draft = ""
 
         self.meditation_minutes = 2
         self.meditation_running = False
@@ -134,6 +145,7 @@ class ResetPathApp:
     def _configure_page(self) -> None:
         self.page.title = "ResetPath"
         self.page.adaptive = True
+        self._apply_theme_palette(self.database.get_settings().theme_mode)
         self.page.bgcolor = SURFACE
         self.page.padding = 0
         self.page.theme = ft.Theme(
@@ -144,7 +156,11 @@ class ResetPathApp:
             color_scheme_seed=PRIMARY,
             font_family="Segoe UI Variable Display",
         )
-        self.page.theme_mode = ft.ThemeMode.LIGHT
+        self.page.theme_mode = (
+            ft.ThemeMode.DARK if self.is_dark_theme else ft.ThemeMode.LIGHT
+        )
+        self.page.on_route_change = self._handle_route_change
+        self.page.on_view_pop = self._handle_system_back
         try:
             self.page.window.width = 430
             self.page.window.height = 820
@@ -152,6 +168,45 @@ class ResetPathApp:
             self.page.window.min_height = 640
         except Exception:
             pass
+
+    def _apply_theme_palette(self, mode: str) -> None:
+        """Keep the app's custom surfaces coherent in both colour modes."""
+        global PRIMARY_SOFT, SUN_SOFT, MINT, MINT_DARK, SURFACE, SURFACE_ALT
+        global CARD, TEXT, MUTED, BORDER, WARNING_SOFT, SHADOW
+        self.is_dark_theme = mode == "dark"
+        if self.is_dark_theme:
+            PRIMARY_SOFT, SUN_SOFT, MINT, MINT_DARK = "#3B2924", "#3A3322", "#28443D", "#A8D9C7"
+            SURFACE, SURFACE_ALT, CARD = "#151917", "#202522", "#222825"
+            TEXT, MUTED, BORDER, WARNING_SOFT, SHADOW = "#F4F0EB", "#C8C0B9", "#3A413D", "#402523", "#42000000"
+        else:
+            PRIMARY_SOFT, SUN_SOFT, MINT, MINT_DARK = "#FFF0E7", "#FFF6D8", "#BFDCCF", "#246456"
+            SURFACE, SURFACE_ALT, CARD = "#FBF8F4", "#F3EDE7", "#FFFFFF"
+            TEXT, MUTED, BORDER, WARNING_SOFT, SHADOW = "#2E2927", "#756C67", "#EAE2DB", "#FCE9E5", "#1A4A2C2A"
+
+    def _set_theme(self, mode: str) -> None:
+        settings = self.database.get_settings()
+        self.database.save_settings(replace(settings, theme_mode=mode))
+        self._apply_theme_palette(mode)
+        self.page.theme_mode = ft.ThemeMode.DARK if self.is_dark_theme else ft.ThemeMode.LIGHT
+        self.page.bgcolor = SURFACE
+        self.render()
+
+    def _handle_system_back(self, _event=None) -> None:
+        """Android back follows the app's path before the OS can close it."""
+        if self.navigation_history:
+            self.go_to(self.navigation_history.pop(), remember=False)
+        elif self.current_view != ViewName.HOME:
+            self.go_to(ViewName.HOME, remember=False)
+
+    def _handle_route_change(self, event) -> None:
+        """Keep browser and Android navigation aligned with the visible screen."""
+        route = getattr(event, "route", self.page.route)
+        target = ROUTES_TO_VIEWS.get(route, ViewName.HOME)
+        if target != self.current_view:
+            if self.current_view in self.navigation_history:
+                self.navigation_history.remove(self.current_view)
+            self.current_view = target
+        self.render()
 
     # ------------------------------------------------------------------
     # Rendering and common controls
@@ -264,7 +319,7 @@ class ResetPathApp:
                 icon=ft.Icons.ARROW_BACK,
                 icon_color=TEXT,
                 tooltip="Back to home",
-                on_click=lambda: self.go_to(ViewName.HOME),
+                on_click=self._handle_system_back,
             )
         elif self.current_view == ViewName.SETTINGS:
             title = "Settings"
@@ -272,7 +327,7 @@ class ResetPathApp:
                 icon=ft.Icons.ARROW_BACK,
                 icon_color=TEXT,
                 tooltip="Back to home",
-                on_click=lambda: self.go_to(ViewName.HOME),
+                on_click=self._handle_system_back,
             )
         else:
             title = {
@@ -296,6 +351,14 @@ class ResetPathApp:
                     icon_color=TEXT,
                     tooltip="Settings",
                     on_click=lambda: self.go_to(ViewName.SETTINGS),
+                )
+            )
+            actions.append(
+                ft.IconButton(
+                    icon=(ft.Icons.LIGHT_MODE_ROUNDED if self.is_dark_theme else ft.Icons.DARK_MODE_ROUNDED),
+                    icon_color=TEXT,
+                    tooltip="Use light mode" if self.is_dark_theme else "Use dark mode",
+                    on_click=lambda: self._set_theme("light" if self.is_dark_theme else "dark"),
                 )
             )
         return ft.Container(
@@ -361,12 +424,17 @@ class ResetPathApp:
         navigation.on_change = navigate
         return navigation
 
-    def go_to(self, view: ViewName) -> None:
+    def go_to(self, view: ViewName, *, remember: bool = True) -> None:
+        if view == self.current_view:
+            return
         if self.current_view == ViewName.RESET and self.breathing_running:
             self.breathing_cancelled = True
         if self.current_view == ViewName.MEDITATE and self.meditation_running:
             self.meditation_cancelled = True
             self.meditation_running = False
+        if remember:
+            self.navigation_history.append(self.current_view)
+            self.navigation_history = self.navigation_history[-12:]
         self.current_view = view
         if view != ViewName.HELP:
             self.crisis_redirected = False
@@ -374,7 +442,9 @@ class ResetPathApp:
             self.page.run_task(self.haptics.selection_click)
         except Exception:
             pass
-        self.render()
+        # `navigate()` updates browser and Android navigation history and then
+        # calls _handle_route_change(), which renders the destination.
+        self.page.navigate(VIEWS_TO_ROUTES[view])
 
     def _scrolling_column(self, controls: list[ft.Control]) -> ft.Control:
         return ft.ListView(
@@ -1500,6 +1570,10 @@ class ResetPathApp:
     # ------------------------------------------------------------------
 
     def _build_journal(self) -> ft.Control:
+        # The default journal is deliberately a blank page. Guided reframing is
+        # available only when the person asks for it below.
+        if self.journal_step == 0:
+            return self._build_diary()
         entries = self.database.list_thought_entries(limit=5)
         controls: list[ft.Control] = [
             ft.Container(
@@ -1649,9 +1723,105 @@ class ResetPathApp:
 
         return self._scrolling_column(controls)
 
+    def _build_diary(self) -> ft.Control:
+        """A calm free-form notebook, separate from the guided thought tool."""
+        pages = self.database.list_diary_entries(limit=8)
+        page = ft.TextField(
+            value=self.diary_draft,
+            hint_text="Write without fixing it. This page is yours.",
+            multiline=True,
+            min_lines=13,
+            max_lines=20,
+            max_length=8_000,
+            autofocus=self.diary_editing_id is None,
+            border=ft.InputBorder.NONE,
+            bgcolor="transparent",
+            text_size=17,
+        )
+
+        def save_page() -> None:
+            if contains_crisis_language(page.value):
+                self._redirect_for_crisis()
+                return
+            try:
+                self.database.save_diary_entry(page.value, self.diary_editing_id)
+            except ValueError as error:
+                self._show_message(str(error), warning=True)
+                return
+            self.diary_draft = ""
+            self.diary_editing_id = None
+            self._show_message("Page saved privately.")
+            self.render()
+
+        def new_page() -> None:
+            self.diary_editing_id = None
+            self.diary_draft = ""
+            self.render()
+
+        def open_page(entry_id: int) -> None:
+            entry = self.database.get_diary_entry(entry_id)
+            if entry:
+                self.diary_editing_id = entry.id
+                self.diary_draft = entry.body
+                self.render()
+
+        controls: list[ft.Control] = [
+            ft.Text("A page for today.", size=27, weight=ft.FontWeight.W_700, color=TEXT),
+            ft.Text(
+                "Private writing. No prompts, scores, or automatic analysis.",
+                color=MUTED,
+            ),
+            ft.Container(
+                content=page,
+                padding=ft.Padding.only(left=18, right=18, top=16, bottom=10),
+                bgcolor=CARD,
+                border=ft.Border(left=ft.BorderSide(3, PRIMARY_SOFT)),
+                border_radius=14,
+                shadow=ft.BoxShadow(blur_radius=18, color=SHADOW, offset=ft.Offset(0, 5)),
+            ),
+            ft.Row(
+                [
+                    self._secondary_button("Voice type", self._show_voice_input_info, icon=ft.Icons.MIC_ROUNDED),
+                    self._secondary_button("New", new_page, icon=ft.Icons.ADD_ROUNDED),
+                    self._primary_button("Save page", save_page, icon=ft.Icons.SAVE_ROUNDED, expand=True),
+                ],
+                spacing=8,
+            ),
+            self._secondary_button(
+                "Need structure? Unpack one thought",
+                self._start_journal,
+                icon=ft.Icons.AUTO_AWESOME_OUTLINED,
+            ),
+            self._section_heading("Previous pages", "Tap a page to continue writing."),
+        ]
+        if not pages:
+            controls.append(ft.Text("Nothing saved yet. Start wherever you are.", color=MUTED))
+        for entry in pages:
+            preview = entry.body.replace("\n", " ").strip()
+            controls.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Text(entry.updated_at.astimezone().strftime("%d %b · %I:%M %p"), size=11, color=MUTED),
+                            ft.Text(preview, size=15, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ],
+                        spacing=5,
+                    ),
+                    padding=15,
+                    bgcolor=SURFACE_ALT,
+                    border_radius=15,
+                    ink=True,
+                    on_click=lambda _event, entry_id=entry.id: open_page(entry_id),
+                )
+            )
+        return self._scrolling_column(controls)
+
     def _start_journal(self) -> None:
         self.journal_step = 1
-        self.journal_values = {"thought": "", "emotion": "", "action": ""}
+        self.journal_values = {
+            "thought": "", "emotion": "", "action": "",
+            "use_diary_context": False, "diary_context": (), "model_route": "",
+        }
         self.journal_plan = None
         self.render()
 
@@ -1709,6 +1879,10 @@ class ResetPathApp:
             bgcolor=CARD,
         )
         error = ft.Text("", color=WARNING)
+        use_diary_context = ft.Checkbox(
+            label="Use relevant private diary pages for this one response",
+            value=bool(self.journal_values.get("use_diary_context", False)),
+        )
 
         async def voice_type() -> None:
             try:
@@ -1729,6 +1903,17 @@ class ResetPathApp:
                 self.page.update()
                 return
             self.journal_values["thought"] = value
+            self.journal_values["use_diary_context"] = bool(use_diary_context.value)
+            route = classify_emotion(value)
+            self.journal_values["model_route"] = route.label if route else ""
+            self.journal_values["diary_context"] = (
+                retrieve_diary_context(
+                    value,
+                    [entry.body for entry in self.database.list_diary_entries(limit=50)],
+                )
+                if use_diary_context.value
+                else ()
+            )
             self.journal_step = 2
             self.render()
 
@@ -1751,6 +1936,7 @@ class ResetPathApp:
                 border_radius=18,
             ),
             field,
+            use_diary_context,
             error,
             ft.Row(
                 [
@@ -1827,14 +2013,28 @@ class ResetPathApp:
             )
             tiles.append(tile)
 
-        return [
+        controls: list[ft.Control] = [
             self._journal_step_header(2, "Which feeling is closest?"),
             ft.Text(
                 "You do not have to name it perfectly. Choose the nearest word.",
                 color=MUTED,
             ),
-            *tiles,
         ]
+        if route := str(self.journal_values.get("model_route", "")):
+            controls.append(
+                ft.Container(
+                    content=ft.Text(
+                        f"Private on-device tone signal: {route.title()}. You decide what fits.",
+                        color=PRIMARY_DARK,
+                        size=13,
+                    ),
+                    padding=12,
+                    bgcolor=PRIMARY_SOFT,
+                    border_radius=14,
+                )
+            )
+        controls.extend(tiles)
+        return controls
 
     def _build_journal_plan_step(self) -> list[ft.Control]:
         plan = self.journal_plan or build_support_plan(
@@ -1900,7 +2100,7 @@ class ResetPathApp:
         )
         save_button.disabled = not bool(self.journal_values["action"])
 
-        return [
+        controls: list[ft.Control] = [
             self._journal_step_header(3, "Here is a steadier way to hold it."),
             ft.Container(
                 content=ft.Column(
@@ -1940,6 +2140,24 @@ class ResetPathApp:
                 "Choose one. You are not committing to the whole day.",
             ),
             *action_controls,
+        ]
+        context = tuple(self.journal_values.get("diary_context", ()))
+        if context:
+            controls.append(
+                self._card(
+                    [
+                        ft.Text("Selected private context", weight=ft.FontWeight.W_700),
+                        ft.Text(
+                            "Matching words from pages you chose to use. This is context, not evidence or a diagnosis.",
+                            color=MUTED,
+                            size=12,
+                        ),
+                        *[ft.Text(f"“{snippet}”", color=PRIMARY_DARK, size=13) for snippet in context],
+                    ],
+                    bgcolor=SUN_SOFT,
+                )
+            )
+        controls.extend([
             save_button,
             ft.Text(
                 "Suggestions are supportive options, not medical advice.",
@@ -1947,7 +2165,8 @@ class ResetPathApp:
                 color=MUTED,
                 text_align=ft.TextAlign.CENTER,
             ),
-        ]
+        ])
+        return controls
 
     def _save_conversational_reflection(self) -> None:
         plan = self.journal_plan
@@ -1972,9 +2191,12 @@ class ResetPathApp:
         self._show_message("Reflection saved privately.")
         self.render()
 
-    def _reset_journal(self, *, render: bool = True) -> None:
+    def _reset_journal(self, _event=None, *, render: bool = True) -> None:
         self.journal_step = 0
-        self.journal_values = {"thought": "", "emotion": "", "action": ""}
+        self.journal_values = {
+            "thought": "", "emotion": "", "action": "",
+            "use_diary_context": False, "diary_context": (), "model_route": "",
+        }
         self.journal_plan = None
         if render:
             self.render()
@@ -3632,6 +3854,7 @@ class ResetPathApp:
                     counsellor_name=counsellor_name.value.strip(),
                     counsellor_phone=counsellor_phone.value.strip(),
                     counsellor_details=counsellor_details.value.strip(),
+                    theme_mode=settings.theme_mode,
                     disclaimer_acknowledged_at=settings.disclaimer_acknowledged_at,
                 )
             )
@@ -3640,6 +3863,19 @@ class ResetPathApp:
 
         return self._scrolling_column(
             [
+                self._card(
+                    [
+                        ft.Text("Appearance", size=20, weight=ft.FontWeight.BOLD),
+                        ft.Text("Choose what feels easiest on your eyes.", color=MUTED),
+                        ft.Row(
+                            [
+                                self._secondary_button("Light", lambda: self._set_theme("light"), icon=ft.Icons.LIGHT_MODE_ROUNDED, expand=True),
+                                self._secondary_button("Dark", lambda: self._set_theme("dark"), icon=ft.Icons.DARK_MODE_ROUNDED, expand=True),
+                            ],
+                            spacing=10,
+                        ),
+                    ]
+                ),
                 self._card(
                     [
                         ft.Text(

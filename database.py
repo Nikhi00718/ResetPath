@@ -17,6 +17,7 @@ from typing import Any, Iterator
 import zipfile
 
 from logic import (
+    DiaryEntry,
     SupportSettings,
     Task,
     ThoughtEntry,
@@ -26,7 +27,7 @@ from logic import (
 from wellbeing import MoodCheckin, WearableImportRow, WearableReading
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def utc_now() -> datetime:
@@ -81,6 +82,7 @@ class Database:
                     counsellor_name TEXT,
                     counsellor_phone TEXT,
                     counsellor_details TEXT,
+                    theme_mode TEXT NOT NULL DEFAULT 'light',
                     disclaimer_acknowledged_at TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -122,6 +124,16 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_thought_entries_created_at
                     ON thought_entries(created_at);
 
+                CREATE TABLE IF NOT EXISTS diary_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    body TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_diary_entries_updated_at
+                    ON diary_entries(updated_at DESC);
+
                 CREATE TABLE IF NOT EXISTS wearable_readings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     recorded_date TEXT NOT NULL,
@@ -157,7 +169,17 @@ class Database:
                     "INSERT INTO schema_metadata(version) VALUES (?)",
                     (SCHEMA_VERSION,),
                 )
-            elif version_row["version"] == 1:
+            elif version_row["version"] < SCHEMA_VERSION:
+                # SQLite's CREATE TABLE IF NOT EXISTS cannot add a new column
+                # to databases created by v0.1, so migrate it explicitly.
+                columns = {
+                    row["name"]
+                    for row in connection.execute("PRAGMA table_info(settings)")
+                }
+                if "theme_mode" not in columns:
+                    connection.execute(
+                        "ALTER TABLE settings ADD COLUMN theme_mode TEXT NOT NULL DEFAULT 'light'"
+                    )
                 connection.execute(
                     "UPDATE schema_metadata SET version = ?", (SCHEMA_VERSION,)
                 )
@@ -177,6 +199,7 @@ class Database:
             counsellor_name=row["counsellor_name"] or "",
             counsellor_phone=row["counsellor_phone"] or "",
             counsellor_details=row["counsellor_details"] or "",
+            theme_mode=row["theme_mode"] or "light",
             disclaimer_acknowledged_at=_parse_datetime(
                 row["disclaimer_acknowledged_at"]
             ),
@@ -195,15 +218,16 @@ class Database:
                 INSERT INTO settings (
                     id, trusted_person_name, trusted_person_phone,
                     counsellor_name, counsellor_phone, counsellor_details,
-                    disclaimer_acknowledged_at, created_at, updated_at
+                    theme_mode, disclaimer_acknowledged_at, created_at, updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     trusted_person_name = excluded.trusted_person_name,
                     trusted_person_phone = excluded.trusted_person_phone,
                     counsellor_name = excluded.counsellor_name,
                     counsellor_phone = excluded.counsellor_phone,
                     counsellor_details = excluded.counsellor_details,
+                    theme_mode = excluded.theme_mode,
                     disclaimer_acknowledged_at =
                         excluded.disclaimer_acknowledged_at,
                     updated_at = excluded.updated_at
@@ -214,11 +238,52 @@ class Database:
                     settings.counsellor_name.strip(),
                     settings.counsellor_phone.strip(),
                     settings.counsellor_details.strip(),
+                    settings.theme_mode if settings.theme_mode in {"light", "dark"} else "light",
                     acknowledged,
                     now,
                     now,
                 ),
             )
+
+    def save_diary_entry(self, body: str, entry_id: int | None = None) -> DiaryEntry:
+        """Create or update a free-form diary page without analysing its content."""
+        cleaned = body.strip()
+        if not cleaned:
+            raise ValueError("A diary page needs some writing before it can be saved.")
+        now = utc_now().isoformat()
+        with self.connection() as connection:
+            if entry_id is None:
+                cursor = connection.execute(
+                    "INSERT INTO diary_entries(body, created_at, updated_at) VALUES (?, ?, ?)",
+                    (cleaned, now, now),
+                )
+                entry_id = int(cursor.lastrowid)
+            else:
+                cursor = connection.execute(
+                    "UPDATE diary_entries SET body = ?, updated_at = ? WHERE id = ?",
+                    (cleaned, now, entry_id),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("That diary page no longer exists.")
+        entry = self.get_diary_entry(entry_id)
+        if entry is None:
+            raise RuntimeError("The diary page could not be loaded.")
+        return entry
+
+    def get_diary_entry(self, entry_id: int) -> DiaryEntry | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM diary_entries WHERE id = ?", (entry_id,)
+            ).fetchone()
+        return _row_to_diary_entry(row) if row else None
+
+    def list_diary_entries(self, *, limit: int = 100) -> list[DiaryEntry]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM diary_entries ORDER BY updated_at DESC, id DESC LIMIT ?",
+                (max(1, min(limit, 500)),),
+            ).fetchall()
+        return [_row_to_diary_entry(row) for row in rows]
 
     def add_task(
         self,
@@ -554,6 +619,13 @@ class Database:
                 ORDER BY created_at, id
                 """
             ).fetchall()
+            diary_rows = connection.execute(
+                """
+                SELECT body, created_at, updated_at
+                FROM diary_entries
+                ORDER BY created_at, id
+                """
+            ).fetchall()
             wearable_rows = connection.execute(
                 """
                 SELECT recorded_date, sleep_hours, resting_heart_rate,
@@ -576,6 +648,7 @@ class Database:
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
             zip_file.writestr("tasks.csv", task_csv)
             zip_file.writestr("thought_journal.csv", thought_csv)
+            zip_file.writestr("diary_pages.csv", _rows_to_csv(diary_rows))
             zip_file.writestr("wearable_context.csv", _rows_to_csv(wearable_rows))
             zip_file.writestr("mood_checkins.csv", _rows_to_csv(mood_rows))
         return archive.getvalue()
@@ -583,6 +656,7 @@ class Database:
     def delete_all_data(self) -> None:
         with self.connection() as connection:
             connection.execute("DELETE FROM thought_entries")
+            connection.execute("DELETE FROM diary_entries")
             connection.execute("DELETE FROM tasks")
             connection.execute("DELETE FROM wearable_readings")
             connection.execute("DELETE FROM mood_checkins")
@@ -620,6 +694,15 @@ def _row_to_thought_entry(row: sqlite3.Row) -> ThoughtEntry:
         next_action=row["next_action"],
         grounded_response=row["grounded_response"],
         created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _row_to_diary_entry(row: sqlite3.Row) -> DiaryEntry:
+    return DiaryEntry(
+        id=row["id"],
+        body=row["body"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
     )
 
 
