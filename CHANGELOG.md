@@ -1,4 +1,7 @@
-# Changelog
+# ResetPath release notes
+
+This changelog records user-visible improvements and important boundaries for
+each published version. Download builds from the [GitHub Releases page](https://github.com/Nikhi00718/ResetPath/releases).
 
 ## 0.2.0 — Local context and privacy release
 
@@ -10,6 +13,12 @@
   dataset, with a user-controlled emotion choice and confidence abstention;
 - stored light/dark appearance preference and route-aware back navigation;
 - held-out model evaluation report and safety-focused test coverage.
+
+### Improved
+
+- pressing Android back returns to the previous ResetPath screen before exit;
+- the old boxed journal experience was replaced by a normal freeform diary;
+- the GitHub release now has separate ARM64, ARMv7, and x86_64 downloads.
 
 ### Safety boundaries
 
