@@ -1,0 +1,58 @@
+{
+  "dataset": "dair-ai/emotion",
+  "split": "validation",
+  "macro_f1": 0.8612,
+  "samples": 2000,
+  "classification_report": {
+    "sadness": {
+      "precision": 0.925512104283054,
+      "recall": 0.9036363636363637,
+      "f1-score": 0.9144434222631095,
+      "support": 550.0
+    },
+    "joy": {
+      "precision": 0.9374068554396423,
+      "recall": 0.8934659090909091,
+      "f1-score": 0.9149090909090909,
+      "support": 704.0
+    },
+    "love": {
+      "precision": 0.7710280373831776,
+      "recall": 0.9269662921348315,
+      "f1-score": 0.8418367346938775,
+      "support": 178.0
+    },
+    "anger": {
+      "precision": 0.8864468864468864,
+      "recall": 0.88,
+      "f1-score": 0.8832116788321168,
+      "support": 275.0
+    },
+    "fear": {
+      "precision": 0.8232558139534883,
+      "recall": 0.8349056603773585,
+      "f1-score": 0.8290398126463701,
+      "support": 212.0
+    },
+    "surprise": {
+      "precision": 0.7444444444444445,
+      "recall": 0.8271604938271605,
+      "f1-score": 0.783625730994152,
+      "support": 81.0
+    },
+    "accuracy": 0.8885,
+    "macro avg": {
+      "precision": 0.8480156903251155,
+      "recall": 0.8776891198444372,
+      "f1-score": 0.8611777450564527,
+      "support": 2000.0
+    },
+    "weighted avg": {
+      "precision": 0.8924061002852133,
+      "recall": 0.8885,
+      "f1-score": 0.8895000785953046,
+      "support": 2000.0
+    }
+  },
+  "safety_note": "This metric measures public emotion-label classification only. It does not measure mental-health assessment, clinical safety, or suitability for crisis support."
+}

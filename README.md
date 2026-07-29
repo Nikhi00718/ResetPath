@@ -41,6 +41,11 @@ verified.
 - 2, 5, and 10 minute visual meditation;
 - soft haptic feedback on supported phones;
 - voice typing through the phone keyboard without ResetPath recording audio;
+- a free-form, private diary page with export and local storage;
+- persisted light and dark themes;
+- in-app back navigation that returns to the previous ResetPath screen.
+- an optional on-device emotion router and diary-context retrieval; diary text
+  is never used for model training.
 - local CSV/JSON wearable import for sleep, resting heart rate, HRV, and steps;
 - optional mood and energy check-ins;
 - local ZIP export and confirmed delete-all;
@@ -161,6 +166,8 @@ Build Android:
 5. [Mobile build and release](docs/05_MOBILE_BUILD_AND_RELEASE.md)
 6. [Testing, privacy, and roadmap](docs/06_TESTING_PRIVACY_AND_ROADMAP.md)
 7. [Local retrieval, voice, and meditation](docs/07_LOCAL_AI_RAG_VOICE_AND_MEDITATION.md)
+8. [Production readiness and device roadmap](docs/09_PRODUCTION_READINESS_AND_DEVICE_ROADMAP.md)
+9. [Local emotion router evaluation](docs/emotion-router-evaluation.json)
 8. [v0.1 release and device features](docs/08_V1_RELEASE_AND_DEVICE_FEATURES.md)
 
 ## Release status

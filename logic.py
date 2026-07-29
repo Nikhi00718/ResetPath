@@ -69,12 +69,23 @@ class ThoughtEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class DiaryEntry:
+    """A private, free-form page written by the user."""
+
+    id: int
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class SupportSettings:
     trusted_person_name: str = ""
     trusted_person_phone: str = ""
     counsellor_name: str = ""
     counsellor_phone: str = ""
     counsellor_details: str = ""
+    theme_mode: str = "light"
     disclaimer_acknowledged_at: datetime | None = None
 
 

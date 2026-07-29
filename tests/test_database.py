@@ -108,7 +108,7 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(loaded[0].id, entry.id)
         self.assertEqual(loaded[0].thought, "Everyone is ahead")
 
-    def test_export_contains_two_csv_files_without_settings(self) -> None:
+    def test_export_contains_private_csv_files_without_settings(self) -> None:
         self.database.save_settings(
             SupportSettings(
                 trusted_person_name="Private Person",
@@ -131,6 +131,7 @@ class DatabaseTests(unittest.TestCase):
                 {
                     "tasks.csv",
                     "thought_journal.csv",
+                    "diary_pages.csv",
                     "wearable_context.csv",
                     "mood_checkins.csv",
                 },
@@ -141,6 +142,14 @@ class DatabaseTests(unittest.TestCase):
             self.assertNotIn("Private Person", combined)
             self.assertIn("Apply once", combined)
             self.assertIn("A thought", combined)
+
+    def test_diary_page_round_trip_and_export(self) -> None:
+        entry = self.database.save_diary_entry("Today felt full, so I paused.")
+        updated = self.database.save_diary_entry("Today felt full. I paused.", entry.id)
+        self.assertEqual(updated.id, entry.id)
+        self.assertEqual(self.database.list_diary_entries()[0].body, "Today felt full. I paused.")
+        with zipfile.ZipFile(BytesIO(self.database.create_export_zip())) as archive:
+            self.assertIn("Today felt full. I paused.", archive.read("diary_pages.csv").decode("utf-8"))
 
     def test_wearable_and_mood_context_round_trip(self) -> None:
         imported = self.database.import_wearable_rows(
@@ -170,9 +179,11 @@ class DatabaseTests(unittest.TestCase):
         self.database.save_thought_entry(
             "Thought", "Anxious", "For", "Against", "Action", "Response"
         )
+        self.database.save_diary_entry("A private page")
         self.database.delete_all_data()
         self.assertEqual(self.database.list_tasks(), [])
         self.assertEqual(self.database.list_thought_entries(), [])
+        self.assertEqual(self.database.list_diary_entries(), [])
         self.assertEqual(self.database.list_wearable_readings(), [])
         self.assertEqual(self.database.list_mood_checkins(), [])
         self.assertEqual(self.database.get_settings(), SupportSettings())
