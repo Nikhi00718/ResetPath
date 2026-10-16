@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#0d1416" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; media-src 'self' blob:" />
+    <title>ResetPath</title>
+    <link rel="icon" href="icon-192.png" />
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <canvas id="scene" aria-hidden="true"></canvas>
+    <div class="backdrop" aria-hidden="true"></div>
+    <main id="view" class="view" tabindex="-1"></main>
+    <div id="mini-player" class="mini-player" hidden></div>
+    <nav class="tabs" aria-label="Main">
+      <button data-tab="today"><span class="tab-icon">☀️</span><span>Today</span></button>
+      <button data-tab="focus"><span class="tab-icon">⏱️</span><span>Focus</span></button>
+      <button data-tab="sounds"><span class="tab-icon">🎧</span><span>Sounds</span></button>
+      <button data-tab="calm"><span class="tab-icon">🫧</span><span>Calm</span></button>
+      <button data-tab="you"><span class="tab-icon">📈</span><span>You</span></button>
+    </nav>
+    <div id="sheet-root"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

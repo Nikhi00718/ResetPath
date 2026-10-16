@@ -11,3 +11,4 @@ dist/
 *.jks
 .env
 *.zip
+node_modules/
