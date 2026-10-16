@@ -73,6 +73,14 @@ export class Scene {
     this.last = performance.now();
     this.frame = 0;
     this.running = false;
+    // Touch play: drag spins the orb with inertia, a press dents it softly,
+    // and every touch sends a ripple across the surface.
+    this.spin = new THREE.Vector2();
+    this.userRotation = new THREE.Euler();
+    this.touch = null;
+    this.press = 0;
+    this.clock = 0;
+    this.raycaster = new THREE.Raycaster();
 
     try {
       this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: "low-power" });
@@ -92,6 +100,10 @@ export class Scene {
       uColorA: { value: new THREE.Color() },
       uColorB: { value: new THREE.Color() },
       uColorC: { value: new THREE.Color() },
+      uTouchPoint: { value: new THREE.Vector3(0, 0, 1) },
+      uPress: { value: 0 },
+      uRipplePoint: { value: new THREE.Vector3(0, 0, 1) },
+      uRippleAge: { value: 99 },
     };
     this.#buildOrb();
     this.#buildGlow();
@@ -114,13 +126,21 @@ export class Scene {
       transparent: true,
       vertexShader: /* glsl */ `
         uniform float uTime; uniform float uAmp;
-        varying float vNoise; varying vec3 vNormal; varying vec3 vView;
+        uniform vec3 uTouchPoint; uniform float uPress;
+        uniform vec3 uRipplePoint; uniform float uRippleAge;
+        varying float vNoise; varying vec3 vNormal; varying vec3 vView; varying float vRipple;
         ${NOISE_GLSL}
         void main(){
           float n = snoise(position * 0.9 + vec3(0.0, uTime * 0.5, uTime * 0.25));
           n += 0.35 * snoise(position * 2.0 - vec3(uTime * 0.35));
           vNoise = n;
-          vec3 displaced = position + normal * n * uAmp;
+          float dTouch = distance(position, uTouchPoint);
+          float dent = -uPress * 0.32 * exp(-dTouch * dTouch * 3.5);
+          float dRipple = distance(position, uRipplePoint);
+          float wave = sin(dRipple * 11.0 - uRippleAge * 9.0)
+            * exp(-uRippleAge * 1.4) * (1.0 - smoothstep(uRippleAge * 1.3 - 0.4, uRippleAge * 1.3 + 0.2, dRipple));
+          vRipple = wave;
+          vec3 displaced = position + normal * (n * uAmp + dent + wave * 0.07);
           vec4 world = modelViewMatrix * vec4(displaced, 1.0);
           vNormal = normalize(normalMatrix * normal);
           vView = normalize(-world.xyz);
@@ -128,7 +148,7 @@ export class Scene {
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uColorA; uniform vec3 uColorB; uniform vec3 uColorC;
-        varying float vNoise; varying vec3 vNormal; varying vec3 vView;
+        varying float vNoise; varying vec3 vNormal; varying vec3 vView; varying float vRipple;
         void main(){
           float facing = max(dot(vNormal, vView), 0.0);
           float fresnel = pow(1.0 - facing, 3.0);
@@ -137,6 +157,7 @@ export class Scene {
           float spec = pow(max(dot(reflect(-light, vNormal), vView), 0.0), 24.0);
           color += spec * 0.35;
           color = mix(color, uColorC, fresnel * 0.6);
+          color += uColorC * max(vRipple, 0.0) * 0.35;
           gl_FragColor = vec4(color, 0.96);
         }`,
     });
@@ -280,6 +301,56 @@ export class Scene {
     if (this.motion === "off") this.renderOnce();
   }
 
+  // Returns true when a screen point lands on the orb.
+  hit(clientX, clientY) {
+    return Boolean(this.#pick(clientX, clientY));
+  }
+
+  touchStart(clientX, clientY) {
+    const point = this.#pick(clientX, clientY);
+    if (!point) return null;
+    this.touch = { x: clientX, y: clientY, moved: 0 };
+    this.uniforms.uTouchPoint.value.copy(point);
+    this.uniforms.uRipplePoint.value.copy(point);
+    this.uniforms.uRippleAge.value = 0;
+    this.spin.multiplyScalar(0.3);
+    this.renderOnce();
+    // Height on the orb, -1 bottom .. 1 top, lets callers pick a note.
+    return { height: point.y };
+  }
+
+  touchMove(clientX, clientY) {
+    if (!this.touch) return 0;
+    const dx = clientX - this.touch.x;
+    const dy = clientY - this.touch.y;
+    this.touch.x = clientX;
+    this.touch.y = clientY;
+    this.touch.moved += Math.hypot(dx, dy);
+    this.spin.x = THREE.MathUtils.clamp(this.spin.x * 0.5 + dy * 0.004, -0.25, 0.25);
+    this.spin.y = THREE.MathUtils.clamp(this.spin.y * 0.5 + dx * 0.004, -0.25, 0.25);
+    const point = this.#pick(clientX, clientY);
+    if (point) this.uniforms.uTouchPoint.value.lerp(point, 0.5);
+    this.renderOnce();
+    return this.touch.moved;
+  }
+
+  touchEnd() {
+    if (!this.touch) return;
+    this.touch = null;
+    this.uniforms.uRipplePoint.value.copy(this.uniforms.uTouchPoint.value);
+    this.uniforms.uRippleAge.value = 0;
+  }
+
+  #pick(clientX, clientY) {
+    if (!this.ok || this.motion === "off" || this.orb.scale.x < 0.05) return null;
+    const ndc = new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const sphere = new THREE.Sphere(this.orb.position, this.orb.scale.x * 1.08);
+    const hit = this.raycaster.ray.intersectSphere(sphere, new THREE.Vector3());
+    if (!hit) return null;
+    return this.orb.worldToLocal(hit).normalize();
+  }
+
   resize() {
     if (!this.ok) return;
     const width = innerWidth;
@@ -335,20 +406,29 @@ export class Scene {
     this.pulseValue *= Math.exp(-dt * 2.5);
     this.time += dt * (s.speed + level * 0.8 + this.pulseValue * 0.6);
     this.uniforms.uTime.value = this.time;
+    this.clock += dt;
+    this.uniforms.uRippleAge.value = Math.min(99, this.uniforms.uRippleAge.value + dt);
+    this.press += ((this.touch ? 1 : 0) - this.press) * (1 - Math.exp(-dt * (this.touch ? 5 : 3)));
+    this.uniforms.uPress.value = this.press;
     this.uniforms.uAmp.value = s.amp + level * 0.07 + this.pulseValue * 0.18;
     this.particleUniforms.uLevel.value = level;
 
     const fit = Math.min(this.viewWidth * 0.5, this.viewHeight * 0.28);
     let scale = fit * s.size;
     if (this.breath !== null) scale *= 0.72 + 0.42 * this.breath;
-    scale *= 1 + this.pulseValue * 0.08 + level * 0.06;
+    scale *= 1 + this.pulseValue * 0.08 + level * 0.06 + this.press * 0.05;
 
     const x = s.x * this.viewWidth;
     const y = (0.5 - s.y) * this.viewHeight + s.scroll * this.pixelsToWorld * 0.6;
     this.orb.position.set(x, y, 0);
     this.orb.scale.setScalar(scale);
-    this.orb.rotation.y += dt * 0.12;
-    this.orb.rotation.x = Math.sin(this.time * 0.2) * 0.2;
+    // Inertia: a flick keeps the orb turning, then it settles back to drifting.
+    this.userRotation.x += this.spin.x * dt * 60;
+    this.userRotation.y += this.spin.y * dt * 60;
+    if (!this.touch) this.spin.multiplyScalar(Math.exp(-dt * 1.2));
+    this.userRotation.x *= Math.exp(-dt * 0.35);
+    this.orb.rotation.y = this.userRotation.y + this.clock * 0.12;
+    this.orb.rotation.x = this.userRotation.x + Math.sin(this.time * 0.2) * 0.2;
     this.glow.position.set(x, y, -0.5);
     this.glow.scale.setScalar(scale * 4.2);
     this.glowMaterial.opacity = 0.55 + level * 0.4 + this.pulseValue * 0.3;

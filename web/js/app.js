@@ -303,6 +303,67 @@ viewEl.addEventListener("contextmenu", (event) => {
   if (event.target.closest("[data-habit]")) event.preventDefault();
 });
 
+// ---------- Orb play ----------
+
+// Touching the orb: a soft note from a pentatonic scale (pitch follows where
+// you touch), a light tap, and a ripple. Dragging spins it; flicks keep it
+// turning for a while. Buttons and fields on top of the orb still win.
+const ORB_NOTES = [196.0, 220.0, 261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
+let orbPointer = null;
+let orbNoteDistance = 0;
+
+function orbNote(height, volume) {
+  const index = Math.round(((height + 1) / 2) * (ORB_NOTES.length - 1));
+  engine.tone(ORB_NOTES[Math.max(0, Math.min(ORB_NOTES.length - 1, index))], volume);
+}
+
+function startsOnControl(target) {
+  return Boolean(target.closest("button, a, input, textarea, select, label, [data-act], .card, .sheet, .tabs, .mini-player"));
+}
+
+addEventListener(
+  "pointerdown",
+  (event) => {
+    if (orbPointer !== null || startsOnControl(event.target) || sheetRoot.firstChild) return;
+    const touched = scene.touchStart(event.clientX, event.clientY);
+    if (!touched) return;
+    orbPointer = event.pointerId;
+    orbNoteDistance = 0;
+    orbNote(touched.height, 0.07);
+    haptic(10);
+  },
+  true,
+);
+
+addEventListener("pointermove", (event) => {
+  if (event.pointerId !== orbPointer) return;
+  const moved = scene.touchMove(event.clientX, event.clientY);
+  // A quieter note every so often while stroking the orb.
+  if (moved - orbNoteDistance > 90) {
+    orbNoteDistance = moved;
+    orbNote(Math.random() * 2 - 1, 0.035);
+    haptic(4);
+  }
+});
+
+for (const type of ["pointerup", "pointercancel"]) {
+  addEventListener(type, (event) => {
+    if (event.pointerId !== orbPointer) return;
+    orbPointer = null;
+    scene.touchEnd();
+  });
+}
+
+// Stop the page from scrolling while a finger is on the orb.
+addEventListener(
+  "touchstart",
+  (event) => {
+    const t = event.touches[0];
+    if (t && !startsOnControl(event.target) && !sheetRoot.firstChild && scene.hit(t.clientX, t.clientY)) event.preventDefault();
+  },
+  { passive: false, capture: true },
+);
+
 // ---------- Focus ----------
 
 function timerProgress() {
@@ -1135,9 +1196,11 @@ const actions = {
     const input = $("[name=intro-name]", sheetRoot);
     state.settings.name = input.value.trim().slice(0, 40);
     state.settings.introSeen = true;
+    state.settings.orbHintSeen = true;
     commit();
     closeSheet();
     render({ animate: true });
+    if (state.settings.motion !== "off") setTimeout(() => toast("Tip: touch the orb. Drag to spin it."), 900);
   },
 };
 
@@ -1311,4 +1374,9 @@ applyAppearance();
 render({ animate: true });
 scene.start();
 if (!state.settings.introSeen) showIntro();
+else if (!state.settings.orbHintSeen && state.settings.motion !== "off") {
+  state.settings.orbHintSeen = true;
+  commit();
+  setTimeout(() => toast("Tip: touch the orb. Drag to spin it."), 1200);
+}
 if (importedLegacy) toast(`Brought over ${state.tasks.length} tasks and ${state.journal.length} journal pages`);

@@ -7,6 +7,11 @@ loud. Everything stays on your phone.
 > ResetPath is a support and productivity tool, not medical treatment, a
 > diagnostic system, or a crisis service.
 
+<p align="center">
+  <a href="docs/demo.mp4"><img src="docs/demo.gif" alt="ResetPath demo: touching the orb, planning the day, mixing rain and fire, focus timer, guided breathing, and weekly stats" width="300"></a>
+</p>
+<p align="center"><a href="docs/demo.mp4">Watch the full-quality video (MP4)</a></p>
+
 ## What it does
 
 - **Today** — mood check-in, today's tasks by track (DSA, Core CS, Project,
@@ -27,8 +32,10 @@ loud. Everything stays on your phone.
 
 The background is a live three.js scene: a soft orb that breathes with the
 breathing guide, reacts to the sound mix, pulses when you finish things, and
-shows focus progress as a ring. Motion can be set to Full, Low (half frame rate),
-or Off.
+shows focus progress as a ring. **You can play with it.** Touch it and it dents
+softly, sends a glowing ripple across its surface, and plays a quiet pentatonic
+note that rises with where you touch. Drag to spin it, and flick to let it
+drift. Motion can be set to Full, Low (half frame rate), or Off.
 
 ## Download for Android
 

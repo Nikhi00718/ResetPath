@@ -349,6 +349,27 @@ export class NoiseEngine {
     return this.sleepEndsAt ? Math.max(0, this.sleepEndsAt - Date.now()) : 0;
   }
 
+  // A soft, slow-decaying note for playing with the orb.
+  tone(freq, volume = 0.07) {
+    const ctx = this.ensure();
+    if (ctx.state === "suspended") ctx.resume();
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(volume, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 3.2);
+    gain.connect(ctx.destination);
+    for (const [ratio, level] of [[1, 1], [2, 0.18], [3.01, 0.06]]) {
+      const osc = ctx.createOscillator();
+      const partial = ctx.createGain();
+      osc.frequency.value = freq * ratio;
+      partial.gain.value = level;
+      osc.connect(partial).connect(gain);
+      osc.start(now);
+      osc.stop(now + 3.3);
+    }
+  }
+
   // A soft two-tone bell for the end of a focus block.
   chime() {
     const ctx = this.ensure();

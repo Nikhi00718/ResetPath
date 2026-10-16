@@ -407,7 +407,6 @@ label.field .input {
   gap: 12px;
   padding: 10px 2px;
   border-bottom: 1px solid var(--line);
-  animation: rise 0.35s ease both;
 }
 
 .task:last-child {

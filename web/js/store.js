@@ -26,6 +26,7 @@ export function defaultState() {
       trustedName: "",
       trustedPhone: "",
       introSeen: false,
+      orbHintSeen: false,
     },
     tasks: [],
     habits: DEFAULT_HABITS.map((habit) => ({ ...habit })),

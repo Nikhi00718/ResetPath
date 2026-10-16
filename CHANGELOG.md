@@ -19,6 +19,8 @@ shell. The APK went from about 117 MB to about 300 KB.
 - **3D motion**: a three.js orb and particle field that breathes, reacts to
   sound, pulses on completions, and shows timer progress. Motion can be set to
   Full, Low, or Off.
+- **Touch-play orb**: press to dent it and send a ripple with a soft
+  pentatonic note; drag or flick to spin it with inertia.
 - Carry-over of unfinished tasks, a "Personal" track, journal prompts, and
   JSON backup and restore.
 - Automatic import of tasks, diary pages, reflections, the trusted contact, and
