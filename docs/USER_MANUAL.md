@@ -8,7 +8,8 @@ can lose. Everything stays on your phone unless you save a backup.
 
 ## Install
 
-1. Copy `resetpath.apk` to your phone and open it.
+1. Download [`resetpath.apk`](https://github.com/Nikhi00718/ResetPath/releases/latest/download/resetpath.apk)
+   on your phone and open it.
 2. If Android asks, allow your file manager or browser to install apps.
 3. Open ResetPath. If you are upgrading from 0.1 or 0.2, your tasks and diary
    pages are brought over automatically.

@@ -39,8 +39,13 @@ drift. Motion can be set to Full, Low (half frame rate), or Off.
 
 ## Download for Android
 
-Build it locally (below). The APK is about 300 KB. Version 0.2 was about
-117 MB.
+[**Download ResetPath v1.0.0 (APK, about 300 KB)**](https://github.com/Nikhi00718/ResetPath/releases/latest/download/resetpath.apk)
+
+One APK works on every Android phone (Android 7.0 or newer); there are no
+per-ABI builds any more. Version 0.2 was about 117 MB. The APK is signed with a
+debug certificate for personal testing. Open the downloaded `resetpath.apk`,
+allow your browser or file manager to install unknown apps when prompted, then
+install. You can also [build it yourself](#build).
 
 Installing over ResetPath 0.1 or 0.2 keeps your data. On first launch the app
 reads the old database and copies over tasks, diary pages, reflections, the
